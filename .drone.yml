@@ -9,7 +9,7 @@ steps:
   settings:
     repo: gt-build.hdap.gatech.edu/HL7ValidatorService
     context: .
-    dockerfile: ./Dockerfile
+    dockerfile: Dockerfile
 - name: get_chart_builder
   image: docker:git
   commands:
