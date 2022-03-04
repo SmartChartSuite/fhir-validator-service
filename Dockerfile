@@ -1,4 +1,3 @@
-LABEL maintainer="Michael.Riley@gtri.gatech.edu"
 #Build the Maven project
 FROM maven:3.6.1-alpine as builder
 COPY . /usr/src/app
