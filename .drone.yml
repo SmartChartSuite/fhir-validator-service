@@ -4,10 +4,10 @@ name: default
 steps:
 #Add submodules to project
 # Create Docker image from WAR file and push to HDAP Docker registry
-- name: deploy_helmcharts_image_HL7ValidatorService
+- name: deploy_helmcharts_image_hl7validatorservice
   image: plugins/docker
   settings:
-    repo: gt-build.hdap.gatech.edu/HL7ValidatorService
+    repo: gt-build.hdap.gatech.edu/hl7validatorservice
     context: .
     dockerfile: Dockerfile
 - name: get_chart_builder
