@@ -10,6 +10,6 @@ RUN apk update
 RUN apk add zip
 
 # Copy GT-FHIR war file to webapps.
-COPY --from=builder /usr/src/app/HL7ValidatorService/target/HL7ValidatorService.war $CATALINA_HOME/webapps/HL7ValidatorService.war
+COPY --from=builder /usr/src/app/target/HL7ValidatorService.war $CATALINA_HOME/webapps/HL7ValidatorService.war
 
 EXPOSE 8080

@@ -234,6 +234,18 @@ public class BundleProvider implements IResourceProvider{
 				ObjectNode issueNode = JsonNodeFactory.instance.objectNode();
 				issueNode.put("severity", severity);
 				issueNode.put("fhirPath", fhirPath);
+				if(!location.equalsIgnoreCase("??")) {
+					Pattern locationRowAndColPattern = Pattern.compile("\\(line (\\d+), col(\\d+)\\)");
+					Matcher locationMatcher = locationRowAndColPattern.matcher(location);
+					if(matcher.find()) {
+						String row = matcher.group(1);
+						String col = matcher.group(2);
+						ObjectNode locationJson = JsonNodeFactory.instance.objectNode();
+						locationJson.put("row", row);
+						locationJson.put("col", col);
+						issueNode.set("locationObj", locationJson);
+					}
+				}
 				issueNode.put("location", location);
 				issueNode.put("message", message);
 				returnNode.add(issueNode);
