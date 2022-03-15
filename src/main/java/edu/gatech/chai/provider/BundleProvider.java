@@ -74,7 +74,7 @@ public class BundleProvider implements IResourceProvider{
 	}
 	
 	@SuppressWarnings("static-access")
-	@Operation(name = "$validate", idempotent= true, manualResponse = true)
+	@Operation(name = "$validate", manualResponse = true)
 	public void validateCLIWrapperMethod(@OperationParam(name = "sourceContent")StringParam sourceContent,
 			@OperationParam(name = "format")StringParam format,
 			@OperationParam(name = "profile")StringParam profile,
@@ -101,7 +101,21 @@ public class BundleProvider implements IResourceProvider{
 			currentParser = jsonParser;
 			servletResponse.setContentType("application/json");
 		}
-		String stringContent = URLDecoder.decode(sourceContent.getValue());
+		
+		String stringContent = "";
+		try {
+			stringContent = URLDecoder.decode(sourceContent.getValue());
+		}
+		catch(NullPointerException e) {
+			//Other show-stopping errors we do have to capture.
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("The parameter 'sourceContent' is missing from the payload."));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+			e.printStackTrace();
+			return;
+		}
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
 		try {
