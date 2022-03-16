@@ -45,6 +45,7 @@ import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
 import ca.uhn.fhir.rest.annotation.OperationParam;
+import ca.uhn.fhir.rest.param.SpecialParam;
 import ca.uhn.fhir.rest.param.StringParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
 import edu.gatech.chai.security.NoExitSecurityManager;
@@ -75,7 +76,7 @@ public class BundleProvider implements IResourceProvider{
 	
 	@SuppressWarnings("static-access")
 	@Operation(name = "$validate", manualResponse = true)
-	public void validateCLIWrapperMethod(@OperationParam(name = "sourceContent")StringParam sourceContent,
+	public void validateCLIWrapperMethod(@OperationParam(name = "sourceContent")SpecialParam sourceContent,
 			@OperationParam(name = "format")StringParam format,
 			@OperationParam(name = "profile")StringParam profile,
 			@OperationParam(name = "ig")StringParam ig,
