@@ -30,13 +30,14 @@ import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
-import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.validation.ValidatorCli;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -150,8 +151,21 @@ public class BundleProvider implements IResourceProvider{
 			parameters.add("-profile");
 			parameters.add(profile.getValue());
 		}
+		Resource resource = new ClassPathResource("validator_cli.jar");
+		String directoryLocation = "";
+		try {
+			directoryLocation = resource.getFile().getParent();
+		} catch (IOException e2) {
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("Could not find validator_cli.jar:"+e2.getLocalizedMessage()));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+			e2.printStackTrace();
+			return;
+		}
 		ProcessBuilder pb = new ProcessBuilder(parameters.toArray(new String[0]));
-		pb.directory(new File("src/main/resources"));
+		pb.directory(new File(directoryLocation));
 		Process validatorProcess;
 		try {
 			validatorProcess = pb.start();
