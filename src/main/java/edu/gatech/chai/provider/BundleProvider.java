@@ -1,12 +1,15 @@
 package edu.gatech.chai.provider;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
+import java.lang.ProcessBuilder.Redirect;
 import java.net.URLDecoder;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
@@ -15,6 +18,8 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -70,13 +75,11 @@ public class BundleProvider implements IResourceProvider{
 	
 	@Override
 	public Class<? extends IBaseResource> getResourceType() {
-		// TODO Auto-generated method stub
 		return Bundle.class;
 	}
 	
-	@SuppressWarnings("static-access")
 	@Operation(name = "$validate", manualResponse = true)
-	public void validateCLIWrapperMethod(@OperationParam(name = "sourceContent")SpecialParam sourceContent,
+	public void validateCLIWrapperMethodExternal(@OperationParam(name = "sourceContent")SpecialParam sourceContent,
 			@OperationParam(name = "format")StringParam format,
 			@OperationParam(name = "profile")StringParam profile,
 			@OperationParam(name = "ig")StringParam ig,
@@ -134,9 +137,10 @@ public class BundleProvider implements IResourceProvider{
 			e1.printStackTrace();
 			return;
 		}
-		
-		ValidatorCli vCLI = new ValidatorCli();
 		List<String> parameters = new ArrayList<String>();
+		parameters.add("java"); //Manually setting up another java process
+		parameters.add("-jar");
+		parameters.add("validator_cli.jar");
 		parameters.add(tempFile.getAbsolutePath());
 		if(!ig.getValue().isEmpty()) {
 			parameters.add("-ig");
@@ -146,35 +150,40 @@ public class BundleProvider implements IResourceProvider{
 			parameters.add("-profile");
 			parameters.add(profile.getValue());
 		}
-		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		PrintStream systemOutputRedirect = new PrintStream(baos);
-		PrintStream originalSystemOut = System.out;
-		System.setOut(systemOutputRedirect);
-		//Must do this to prevent System.exit() from killing the whole server!
-		//Security Manager just throws a SecurityError instead of killing whole process
-		if(!(System.getSecurityManager() instanceof NoExitSecurityManager)) {
-			System.setSecurityManager(new NoExitSecurityManager(System.getSecurityManager()));
-		}
+		ProcessBuilder pb = new ProcessBuilder(parameters.toArray(new String[0]));
+		pb.directory(new File("src/main/resources"));
+		Process validatorProcess;
 		try {
-			vCLI.main(parameters.toArray(new String[0]));
-		} catch (SecurityException e) {
-			//It's ok to ignore this error if it's thrown from the security manager from System.exit()
-		}
-		catch (Exception e) {
-			//Other show-stopping errors we do have to capture.
+			validatorProcess = pb.start();
+		} catch (IOException e) {
 			OperationOutcome oo = new OperationOutcome();
 			oo.addIssue()
 			.setSeverity(IssueSeverity.FATAL)
-			.setDetails(new CodeableConcept().setText(e.getLocalizedMessage()));
+			.setDetails(new CodeableConcept().setText("Could not start validator process:"+e.getLocalizedMessage()));
 			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
 			e.printStackTrace();
 			return;
 		}
-		finally {
-			System.out.flush();
-			System.setOut(originalSystemOut);
+		BufferedReader reader = 
+                new BufferedReader(new InputStreamReader(validatorProcess.getInputStream()));
+		StringBuilder builder = new StringBuilder();
+		String line = null;
+		try {
+			while ( (line = reader.readLine()) != null) {
+			   builder.append(line);
+			   builder.append(System.getProperty("line.separator"));
+			}
+		} catch (IOException e) {
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("Could not read line from process input steram:"+e.getLocalizedMessage()));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+			e.printStackTrace();
+			return;
 		}
-		JsonNode finalIssuesJson = convertHL7ValidatorOutputToJsonIssues(baos);
+		String result = builder.toString();
+		JsonNode finalIssuesJson = convertHL7ValidatorOutputToJsonIssues(result);
 		String responseContent;
 		try {
 			responseContent = objectMapper.writeValueAsString(finalIssuesJson);
@@ -206,6 +215,15 @@ public class BundleProvider implements IResourceProvider{
 		return servletResponse;
 	}
 	
+	private JsonNode convertHL7ValidatorOutputToJsonIssues(String string){
+		logger.info(string);
+		String[] lines = string.split("\n");
+		logger.info(string);
+		int lineNumber = findLineThatStartsTheReport(lines);
+		String[] issueLines = Arrays.copyOfRange(lines, lineNumber+1, lines.length);
+		return linesToIssue(issueLines);
+	}
+	
 	private JsonNode convertHL7ValidatorOutputToJsonIssues(ByteArrayOutputStream baos){
 		String[] lines = baos.toString().split("\n");
 		logger.info(baos.toString());
@@ -226,12 +244,14 @@ public class BundleProvider implements IResourceProvider{
 	}
 	
 	private ArrayNode linesToIssue(String[]lines) {
-		Pattern linePattern = Pattern.compile("(Warning|Error|Note|Information|Fatal) @ "
-				+ "([\\w\\[\\]\\(\\)]+(\\.[\\w\\[\\]\\(\\)]+)*|\\?\\?|\\(document\\)) "
-				+ "(\\(line \\d+, col\\d+\\) )?: (.*)");
 		ArrayNode returnNode = JsonNodeFactory.instance.arrayNode();
+		Pattern linePattern = Pattern.compile("\\w*(Warning|Error|Note|Information|Fatal) @ "
+				+ "([\\w\\[\\]\\(\\)]+(\\.[\\w\\[\\]\\(\\)]+)*|\\?\\?|\\(document\\)) "
+				+ "(\\(line \\d+, col\\d+\\))?: (.*)");
+		Pattern allOKPattern = Pattern.compile("\\w*Information: All OK");
 		for(String line:lines) {
 			Matcher matcher = linePattern.matcher(line);
+			Matcher allOKMatcher = allOKPattern.matcher(line);
 			if(matcher.find()) {
 				String severity = null;
 				String fhirPath = null;
@@ -263,6 +283,14 @@ public class BundleProvider implements IResourceProvider{
 				}
 				issueNode.put("location", location);
 				issueNode.put("message", message);
+				returnNode.add(issueNode);
+			}
+			else if(allOKMatcher.find()) {
+				ObjectNode issueNode = JsonNodeFactory.instance.objectNode();
+				issueNode.put("severity", "Information");
+				issueNode.put("fhirPath", "");
+				issueNode.put("location", "");
+				issueNode.put("message", "ALL OK");
 				returnNode.add(issueNode);
 			}
 		}
