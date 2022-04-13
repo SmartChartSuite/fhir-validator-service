@@ -1,11 +1,11 @@
 #Build the Maven project
-FROM maven:3.8.4-jdk-11 as builder
+FROM maven:3.8.4-jdk-16 as builder
 COPY . /usr/src/app
 WORKDIR /usr/src/app
 RUN mvn clean install
 
 #Build the Tomcat container
-FROM tomcat:alpine
+FROM tomcat:jre17-temurin
 RUN apk update
 RUN apk add zip
 
