@@ -6,8 +6,6 @@ RUN mvn clean install
 
 #Build the Tomcat container
 FROM tomcat:jre17-temurin
-RUN apk update
-RUN apk add zip
 
 # Update server.xml file with updated timeout to handle longer request
 COPY tomcat_server.xml $CATALINA_HOME/conf/server.xml
