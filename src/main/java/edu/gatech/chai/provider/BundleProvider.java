@@ -199,7 +199,7 @@ public class BundleProvider implements IResourceProvider{
 			return;
 		}
 		String errorResult = errorBuilder.toString();
-		if(!errorResult.isBlank()) {
+		if(errorResult != null && !errorResult.isBlank()) {
 			logger.error(errorResult);
 			OperationOutcome oo = new OperationOutcome();
 			oo.addIssue()
