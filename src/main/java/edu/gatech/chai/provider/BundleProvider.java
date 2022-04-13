@@ -45,6 +45,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.sun.tools.sjavac.Log;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.DataFormatException;
@@ -178,6 +179,36 @@ public class BundleProvider implements IResourceProvider{
 			e.printStackTrace();
 			return;
 		}
+		
+		BufferedReader errorReader = 
+                new BufferedReader(new InputStreamReader(validatorProcess.getErrorStream()));
+		StringBuilder errorBuilder = new StringBuilder();
+		String errorLine = null;
+		try {
+			while ( (errorLine = errorReader.readLine()) != null) {
+			   errorBuilder.append(errorLine);
+			   errorBuilder.append(System.getProperty("line.separator"));
+			}
+		} catch (IOException e) {
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("Could not read line from process error steram:"+e.getLocalizedMessage()));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+			e.printStackTrace();
+			return;
+		}
+		String errorResult = errorBuilder.toString();
+		if(!errorResult.isBlank()) {
+			logger.error(errorResult);
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("Error running external validator_cli.jar:"+errorResult));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+			return;
+		}
+		
 		BufferedReader reader = 
                 new BufferedReader(new InputStreamReader(validatorProcess.getInputStream()));
 		StringBuilder builder = new StringBuilder();
