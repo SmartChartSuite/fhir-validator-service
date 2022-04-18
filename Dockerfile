@@ -1,5 +1,5 @@
 #Build the Maven project
-FROM maven:3.8.4-openjdk-8 as builder
+FROM maven:3.8.3-openjdk-16 as builder
 COPY . /usr/src/app
 WORKDIR /usr/src/app
 RUN mvn clean install
