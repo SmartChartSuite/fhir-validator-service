@@ -5,3 +5,4 @@ bin/
 *.iml
 .settings/
 fhirstarters_restskeleton_jettyrun.log
+*T*.json

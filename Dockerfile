@@ -4,14 +4,31 @@ COPY . /usr/src/app
 WORKDIR /usr/src/app
 RUN mvn clean install
 
-#Build the Tomcat container
-FROM tomcat:latest
+#!/bin/sh
+FROM jetty:9-jre11
 
-# Update server.xml file with updated timeout to handle longer request
-# COPY tomcat_server.xml $CATALINA_HOME/conf/server.xml
-# Update security policy to avoid AccessControlException
-# COPY catalina.policy $CATALINA_HOME/conf/catalina.policy
-# Copy HL7ValidatorService war file to webapps.
-COPY --from=builder /usr/src/app/target/HL7ValidatorService.war $CATALINA_HOME/webapps/HL7ValidatorService.war
+USER jetty:jetty
 
+# Default database directory
+RUN mkdir -p /var/lib/jetty/target
+
+# Default config directory
+RUN mkdir -p /var/lib/jetty/webapps/config
+
+# Uncomment the following line if you wish to deploy both versions of the CQF Ruler HAPI FHIR server.
+# Note: You will need to provide the cqf-ruler-dstu3.war in the appropriate location from the main CQF Ruler repository.
+# COPY --chown=jetty:jetty ./cqf-ruler-dstu3/target/cqf-ruler-dstu3.war /var/lib/jetty/webapps/cqf-ruler-stu3.war
+COPY --from=builder --chown=jetty:jetty /usr/src/app/target/HL7ValidatorService.war /var/lib/jetty/webapps/HL7ValidatorService.war
 EXPOSE 8080
+
+# Uncomment the appropriate lines below if you intend to not use the Docker Compose deployment.
+# ENV SERVER_ADDRESS_DSTU3=""
+# ENV SERVER_ADDRESS_R4=""
+# ARG SERVER_ADDRESS
+# ENV SERVER_ADDRESS=$SERVER_ADDRESS
+# ENV JAVA_OPTIONS=""
+
+# COPY ./r4/src/main/resources/hapi.properties /var/lib/jetty/webapps/config/r4.properties
+
+# COPY --chown=jetty:jetty ./scripts/docker-entrypoint-override.sh /docker-entrypoint-override.sh
+# ENTRYPOINT [ "sh", "/docker-entrypoint-override.sh" ]
