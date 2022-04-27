@@ -28,8 +28,11 @@ import javax.servlet.http.HttpServletResponse;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.Bundle;
 import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.DomainResource;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
+import org.hl7.fhir.r4.model.Patient;
+import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.validation.ValidatorCli;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +40,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -48,6 +50,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.sun.tools.sjavac.Log;
 
 import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.model.api.IResource;
 import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
@@ -81,16 +84,19 @@ public class BundleProvider implements IResourceProvider{
 	}
 	
 	@Operation(name = "$validate", manualResponse = true)
-	public void validateCLIWrapperMethodExternal(@OperationParam(name = "sourceContent")SpecialParam sourceContent,
-			@OperationParam(name = "format")StringParam format,
+	public void validateCLIWrapperMethodExternal(@OperationParam(name = "format")StringParam format,
 			@OperationParam(name = "profile")StringParam profile,
 			@OperationParam(name = "ig")StringParam ig,
+			@OperationParam(name = "resource")IResource resource,
 			HttpServletResponse servletResponse) {
 		logger.info("Received $validate operation call");
-		//Write the source to file so validatorCLI can use it
-		IParser currentParser;
+		String resourceBody = jsonParser.encodeResourceToString(resource);
 		String nowAsISO = df.format(new Date());
 		String fileName = nowAsISO;
+		fileName = fileName + ".json";
+		servletResponse.setContentType("application/json");
+		//Write the source to file so validatorCLI can use it
+		IParser currentParser;
 		if(ig == null) {
 			ig = new StringParam("hl7.fhir.us.mdi#current");
 		}
@@ -108,26 +114,12 @@ public class BundleProvider implements IResourceProvider{
 			servletResponse.setContentType("application/json");
 		}
 		
-		String stringContent = "";
-		try {
-			stringContent = URLDecoder.decode(sourceContent.getValue());
-		}
-		catch(NullPointerException e) {
-			//Other show-stopping errors we do have to capture.
-			OperationOutcome oo = new OperationOutcome();
-			oo.addIssue()
-			.setSeverity(IssueSeverity.FATAL)
-			.setDetails(new CodeableConcept().setText("The parameter 'sourceContent' is missing from the payload."));
-			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
-			e.printStackTrace();
-			return;
-		}
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
 		try {
 			tempFile.createNewFile();
 			fos = new FileOutputStream(tempFile);
-			byte[] sourceContentBytes = stringContent.getBytes();
+			byte[] sourceContentBytes = resourceBody.getBytes();
 			fos.write(sourceContentBytes);
 			fos.close();
 		} catch (IOException e1) {
@@ -152,10 +144,10 @@ public class BundleProvider implements IResourceProvider{
 			parameters.add("-profile");
 			parameters.add(profile.getValue());
 		}
-		Resource resource = new ClassPathResource("validator_cli.jar");
+		org.springframework.core.io.Resource jarResource = new ClassPathResource("validator_cli.jar");
 		String directoryLocation = "";
 		try {
-			directoryLocation = resource.getFile().getParent();
+			directoryLocation = jarResource.getFile().getParent();
 		} catch (IOException e2) {
 			OperationOutcome oo = new OperationOutcome();
 			oo.addIssue()

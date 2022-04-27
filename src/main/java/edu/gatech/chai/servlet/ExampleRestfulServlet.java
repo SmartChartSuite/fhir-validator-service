@@ -10,8 +10,7 @@ import ca.uhn.fhir.rest.server.IResourceProvider;
 import ca.uhn.fhir.rest.server.RestfulServer;
 import ca.uhn.fhir.rest.server.interceptor.ResponseHighlighterInterceptor;
 import edu.gatech.chai.provider.BundleProvider;
-import edu.gatech.chai.provider.OrganizationResourceProvider;
-import edu.gatech.chai.provider.PatientResourceProvider;
+import edu.gatech.chai.provider.GenericProvider;
 
 /**
  * This servlet is the actual FHIR server itself
@@ -37,9 +36,7 @@ public class ExampleRestfulServlet extends RestfulServer {
 		 * Two resource providers are defined. Each one handles a specific
 		 * type of resource.
 		 */
-		List<IResourceProvider> providers = new ArrayList<IResourceProvider>();
-		providers.add(new BundleProvider());
-		setResourceProviders(providers);
+		registerProvider(new GenericProvider());
 		
 		/*
 		 * Use a narrative generator. This is a completely optional step, 
