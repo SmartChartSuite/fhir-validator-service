@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
@@ -18,6 +19,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
 import java.util.regex.Matcher;
@@ -453,21 +455,30 @@ public class GenericProvider{
 			return servletResponse;
 		}
 		ProcessBuilder pb = new ProcessBuilder(parameters.toArray(new String[0]));
+		File errorFile = pb.redirectError(new File("validatorErrorStream.log")).redirectError().file();
+		File outputFile = pb.redirectOutput(new File("validatorOutputStream.log")).redirectOutput().file();
 		pb.directory(new File(directoryLocation));
 		Process validatorProcess;
 		try {
 			validatorProcess = pb.start();
+			validatorProcess.waitFor(2, TimeUnit.MINUTES); //2 minute timeout for now
 		} catch (IOException e) {
 			createErrorOperationOutcome("Could not start validator process:"+e.getLocalizedMessage(),servletResponse,currentParser);
 			e.printStackTrace();
 			return servletResponse;
+		} catch (InterruptedException e) {
+			createErrorOperationOutcome("Interruption error with validator_cli.jar:"+e.getLocalizedMessage(),servletResponse,currentParser);
+			e.printStackTrace();
+			return servletResponse;
 		}
-		
-		BufferedReader errorReader = 
-                new BufferedReader(new InputStreamReader(validatorProcess.getErrorStream()));
+		finally {
+			//Seems like process builder redirect closes it for itself
+		}
 		StringBuilder errorBuilder = new StringBuilder();
-		String errorLine = null;
 		try {
+			BufferedReader errorReader = 
+	                new BufferedReader(new FileReader(errorFile));
+			String errorLine = null;
 			while ( (errorLine = errorReader.readLine()) != null) {
 			   errorBuilder.append(errorLine);
 			   errorBuilder.append(System.getProperty("line.separator"));
@@ -483,12 +494,11 @@ public class GenericProvider{
 			createErrorOperationOutcome("Error running external validator_cli.jar:"+errorResult,servletResponse,currentParser);
 			return servletResponse;
 		}
-		
-		BufferedReader reader = 
-                new BufferedReader(new InputStreamReader(validatorProcess.getInputStream()));
 		StringBuilder builder = new StringBuilder();
-		String line = null;
 		try {
+			BufferedReader reader = 
+	                new BufferedReader(new FileReader(outputFile));
+			String line = null;
 			while ( (line = reader.readLine()) != null) {
 			   builder.append(line);
 			   builder.append(System.getProperty("line.separator"));
