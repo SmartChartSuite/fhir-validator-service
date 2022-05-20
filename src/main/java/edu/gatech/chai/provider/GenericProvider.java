@@ -25,11 +25,14 @@ import java.util.jar.Manifest;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.io.IOUtils;
 import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.*;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
+import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.validation.ValidatorCli;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,346 +72,58 @@ public class GenericProvider{
 		df = new SimpleDateFormat("yyyy-MM-dd'T'HHmmss");
 		df.setTimeZone(tz);
 		FhirContext ctx = FhirContext.forR4();
-		jsonParser = ctx.newJsonParser();
+		jsonParser = ctx.newJsonParser().setPrettyPrint(true);
 		xmlParser = ctx.newXmlParser();
 		objectMapper = new ObjectMapper();
 	}
 	
-	@Operation(name = "$validate", manualResponse = true, type = Account.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Account resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
 	
-	@Operation(name = "$validate", manualResponse = true, type = AdverseEvent.class)
+	@Operation(name = "$validate", manualRequest = true, manualResponse = true)
 	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")AdverseEvent resource,
+			HttpServletRequest servletRequest,
 			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = AllergyIntolerance.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")AllergyIntolerance resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Appointment.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Appointment resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = AppointmentResponse.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")AppointmentResponse resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true,type = AuditEvent.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")AuditEvent resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Basic.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Basic resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = BiologicallyDerivedProduct.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")BiologicallyDerivedProduct resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = BodyStructure.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")BodyStructure resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Bundle.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Bundle resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = CarePlan.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")CarePlan resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = CareTeam.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")CareTeam resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = CatalogEntry.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")CatalogEntry resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = ChargeItem.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")ChargeItem resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Claim.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Claim resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = ClaimResponse.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")ClaimResponse resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = ClinicalImpression.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")ClinicalImpression resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Communication.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Communication resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = CommunicationRequest.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")CommunicationRequest resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Composition.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Composition resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Condition.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Condition resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Consent.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Consent resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Contract.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Contract resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Coverage.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Coverage resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = CoverageEligibilityRequest.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")CoverageEligibilityRequest resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Medication.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Medication resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = MedicationAdministration.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")MedicationAdministration resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = MedicationDispense.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")MedicationDispense resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = MedicationRequest.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")MedicationRequest resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = MedicationStatement.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")MedicationStatement resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = MessageHeader.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")MessageHeader resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Observation.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Observation resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Parameters.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Parameters resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Patient.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Patient resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Practitioner.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Practitioner resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = PractitionerRole.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")PractitionerRole resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
-	}
-	
-	@Operation(name = "$validate", manualResponse = true, type = Specimen.class)
-	public void validateResource(
-			@OperationParam(name = "ig")StringParam ig,
-			@OperationParam(name = "resource")Specimen resource,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation call for "+resource.getResourceType().toString()+" type resource");
-		servletResponse = baseValidate(ig,resource,servletResponse);
+		logger.info("Received $validate operation to genericprovider");
+		IParser currentParser = jsonParser;
+		String contentType = servletRequest.getContentType();
+		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+			currentParser = jsonParser;
+		}
+		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+			currentParser = xmlParser;
+		}
+		else {
+			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+					" application/xml, application/fhir+xml",servletResponse,currentParser);
+			return;
+		}
+		Resource myParametersResource = null;
+		try {
+			myParametersResource = (Parameters)currentParser.parseResource(servletRequest.getInputStream());
+		} catch (IOException e) {
+			createErrorOperationOutcome("Error serializing request body:" + e.getLocalizedMessage(),servletResponse,currentParser);
+			return;
+		}
+		if(myParametersResource instanceof Parameters) {
+			Parameters parameters = (Parameters)myParametersResource;
+			StringType ig = (StringType)parameters.getParameter("ig");
+			for(ParametersParameterComponent ppc: parameters.getParameter()) {
+				if(ppc.getName().equalsIgnoreCase("resource")) {
+					Resource validatingResource = ppc.getResource();
+					baseValidate(ig,validatingResource,servletResponse);
+					return;
+				}
+			}
+		}
+		else {
+			createErrorOperationOutcome("Expected Parameters instead found " + myParametersResource.fhirType(),servletResponse,currentParser);
+			return;
+		}
+		createErrorOperationOutcome("Could not parse Parameters options. Expecting stringParam named 'ig' and resourceParam named 'resource'",servletResponse,currentParser);
+		return;
 	}
 	
 	
-	public HttpServletResponse baseValidate(StringParam ig,Resource resource,HttpServletResponse servletResponse) {
+	public HttpServletResponse baseValidate(StringType ig,Resource resource,HttpServletResponse servletResponse) {
 		String resourceType = resource.getResourceType().toString();
 		IParser currentParser = jsonParser;
 		String resourceBody = currentParser.encodeResourceToString(resource);
@@ -417,7 +132,7 @@ public class GenericProvider{
 		servletResponse.setContentType("application/json");
 		//Write the source to file so validatorCLI can use it
 		if(ig == null) {
-			ig = new StringParam("hl7.fhir.us.mdi#current");
+			ig = new StringType("hl7.fhir.us.mdi#current");
 		}
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
@@ -461,7 +176,7 @@ public class GenericProvider{
 		Process validatorProcess;
 		try {
 			validatorProcess = pb.start();
-			validatorProcess.waitFor(2, TimeUnit.MINUTES); //2 minute timeout for now
+			validatorProcess.waitFor(4, TimeUnit.MINUTES); //4 minute timeout for now
 		} catch (IOException e) {
 			createErrorOperationOutcome("Could not start validator process:"+e.getLocalizedMessage(),servletResponse,currentParser);
 			e.printStackTrace();
