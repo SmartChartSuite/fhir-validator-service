@@ -77,6 +77,58 @@ public class GenericProvider{
 		objectMapper = new ObjectMapper();
 	}
 	
+	@Operation(name = "$translate", manualRequest = true, manualResponse = true)
+	public void translateResource(
+			HttpServletRequest servletRequest,
+			HttpServletResponse servletResponse) {
+		logger.info("Received $validate operation to genericprovider");
+		IParser sourceParser = jsonParser;
+		IParser targetParser = xmlParser;
+		String contentType = servletRequest.getContentType();
+		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+			sourceParser = jsonParser;
+			targetParser = xmlParser;
+		}
+		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+			sourceParser = xmlParser;
+			targetParser = jsonParser;
+		}
+		else {
+			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+					" application/xml, application/fhir+xml",servletResponse,sourceParser);
+			return;
+		}
+		Resource myParametersResource = null;
+		try {
+			myParametersResource = (Parameters)sourceParser.parseResource(servletRequest.getInputStream());
+		} catch (IOException e) {
+			createErrorOperationOutcome("Error serializing request body:" + e.getLocalizedMessage(),servletResponse,sourceParser);
+			return;
+		}
+		if(myParametersResource instanceof Parameters) {
+			Parameters parameters = (Parameters)myParametersResource;
+			for(ParametersParameterComponent ppc: parameters.getParameter()) {
+				if(ppc.getName().equalsIgnoreCase("resource")) {
+					Resource translatingResource = ppc.getResource();
+					String returnBody = targetParser.encodeResourceToString(translatingResource);
+					try {
+						servletResponse.getWriter().write(returnBody);
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					return;
+				}
+			}
+		}
+		else {
+			createErrorOperationOutcome("Expected Parameters instead found " + myParametersResource.fhirType(),servletResponse,sourceParser);
+			return;
+		}
+		createErrorOperationOutcome("Could not parse Parameters options. Expecting stringParam named 'ig' and resourceParam named 'resource'",servletResponse,sourceParser);
+		return;
+	}
+	
 	
 	@Operation(name = "$validate", manualRequest = true, manualResponse = true)
 	public void validateResource(
