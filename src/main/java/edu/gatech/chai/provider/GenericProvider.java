@@ -276,10 +276,14 @@ public class GenericProvider{
 			return servletResponse;
 		}
 		String result = builder.toString();
-		JsonNode finalIssuesJson = convertHL7ValidatorOutputToJsonIssues(result);
+		JsonNode issuesJson = convertHL7ValidatorOutputToJsonIssues(result);
+		//Add original resource body as a json string body here.
+		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
+		returnNode.put("issues", issuesJson);
+		returnNode.put("formattedResource", resourceBody);
 		String responseContent;
 		try {
-			responseContent = objectMapper.writeValueAsString(finalIssuesJson);
+			responseContent = objectMapper.writeValueAsString(returnNode);
 		} catch (JsonProcessingException e1) {
 			createErrorOperationOutcome(e1.getLocalizedMessage(),servletResponse,currentParser);
 			return servletResponse;
