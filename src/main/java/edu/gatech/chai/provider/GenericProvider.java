@@ -47,6 +47,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.model.api.IResource;
@@ -54,6 +55,7 @@ import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
 import ca.uhn.fhir.rest.annotation.OperationParam;
+import ca.uhn.fhir.rest.api.EncodingEnum;
 import ca.uhn.fhir.rest.param.SpecialParam;
 import ca.uhn.fhir.rest.param.StringParam;
 import ca.uhn.fhir.rest.server.IResourceProvider;
@@ -66,7 +68,8 @@ public class GenericProvider{
 	DateFormat df;
 	IParser jsonParser;
 	IParser xmlParser;
-	ObjectMapper objectMapper;
+	ObjectMapper jsonMapper;
+	ObjectMapper xmlMapper;
 	public GenericProvider() {
 		TimeZone tz = TimeZone.getTimeZone("UTC");
 		df = new SimpleDateFormat("yyyy-MM-dd'T'HHmmss");
@@ -74,7 +77,8 @@ public class GenericProvider{
 		FhirContext ctx = FhirContext.forR4();
 		jsonParser = ctx.newJsonParser().setPrettyPrint(true);
 		xmlParser = ctx.newXmlParser();
-		objectMapper = new ObjectMapper();
+		jsonMapper = new ObjectMapper();
+		xmlMapper = new XmlMapper();
 	}
 	
 	@Operation(name = "$translate", manualRequest = true, manualResponse = true)
@@ -136,12 +140,17 @@ public class GenericProvider{
 			HttpServletResponse servletResponse) {
 		logger.info("Received $validate operation to genericprovider");
 		IParser currentParser = jsonParser;
+		ObjectMapper currentMapper = jsonMapper;
 		String contentType = servletRequest.getContentType();
 		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
 			currentParser = jsonParser;
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json");
 		}
 		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
 			currentParser = xmlParser;
+			currentMapper = xmlMapper;
+			servletResponse.setContentType("application/xml");
 		}
 		else {
 			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
@@ -161,7 +170,7 @@ public class GenericProvider{
 			for(ParametersParameterComponent ppc: parameters.getParameter()) {
 				if(ppc.getName().equalsIgnoreCase("resource")) {
 					Resource validatingResource = ppc.getResource();
-					baseValidate(ig,validatingResource,servletResponse);
+					baseValidate(ig,validatingResource,currentParser,currentMapper,servletResponse);
 					return;
 				}
 			}
@@ -175,13 +184,18 @@ public class GenericProvider{
 	}
 	
 	
-	public HttpServletResponse baseValidate(StringType ig,Resource resource,HttpServletResponse servletResponse) {
+	public HttpServletResponse baseValidate(StringType ig,Resource resource, IParser currentParser, ObjectMapper currentMapper, HttpServletResponse servletResponse) {
 		String resourceType = resource.getResourceType().toString();
-		IParser currentParser = jsonParser;
 		String resourceBody = currentParser.encodeResourceToString(resource);
 		String nowAsISO = df.format(new Date());
-		String fileName = resource.getResourceType().toString() + nowAsISO + ".json";
-		servletResponse.setContentType("application/json");
+		String fileType = "";
+		if(currentParser.getEncoding().equals(EncodingEnum.JSON)) {
+			fileType = ".json";
+		}
+		else if(currentParser.getEncoding().equals(EncodingEnum.XML)) {
+			fileType = ".xml";
+		}
+		String fileName = resource.getResourceType().toString() + nowAsISO + fileType;
 		//Write the source to file so validatorCLI can use it
 		if(ig == null) {
 			ig = new StringType("hl7.fhir.us.mdi#current");
@@ -283,12 +297,11 @@ public class GenericProvider{
 		returnNode.put("formattedResource", resourceBody);
 		String responseContent;
 		try {
-			responseContent = objectMapper.writeValueAsString(returnNode);
+			responseContent = currentMapper.writeValueAsString(returnNode);
 		} catch (JsonProcessingException e1) {
 			createErrorOperationOutcome(e1.getLocalizedMessage(),servletResponse,currentParser);
 			return servletResponse;
 		}
-		servletResponse.setContentType("application/json");
 		try {
 			servletResponse.getWriter().write(responseContent);
 		} catch (IOException e) {
@@ -329,8 +342,9 @@ public class GenericProvider{
 	private ArrayNode linesToIssue(String[]lines) {
 		ArrayNode returnNode = JsonNodeFactory.instance.arrayNode();
 		Pattern linePattern = Pattern.compile("\\w*(Warning|Error|Note|Information|Fatal) @ "
-				+ "([\\w\\[\\]\\(\\)]+(\\.[\\w\\[\\]\\(\\)]+)*|\\?\\?|\\(document\\)) "
-				+ "(\\(line \\d+, col\\d+\\))?: (.*)");
+				+ "([\\w\\[\\]\\(\\)]+(\\.[\\w\\[\\]\\(\\)]+)*|\\?\\?|\\(document\\)|(\\/f:.*))\\s"
+				+ "(\\(line \\d+, col\\d+\\))?"
+				+ ": (.*)");
 		Pattern allOKPattern = Pattern.compile("\\w*Information: All OK");
 		for(String line:lines) {
 			Matcher matcher = linePattern.matcher(line);
@@ -343,8 +357,8 @@ public class GenericProvider{
 				if(matcher.group(1) != null) {
 					severity = matcher.group(1);
 					fhirPath = matcher.group(2);
-					location = matcher.group(4) == null ? "??" : matcher.group(4);
-					message = matcher.group(5);
+					location = matcher.group(5) == null ? "??" : matcher.group(5);
+					message = matcher.group(6);
 				}
 				else {
 					continue;

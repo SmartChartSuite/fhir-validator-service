@@ -133,6 +133,12 @@
 		    <artifactId>jackson-databind</artifactId>
 		    <version>2.13.0</version>
 		</dependency>
+		<!-- Jackson for manually mapping XML data -->
+		<dependency>
+		    <groupId>com.fasterxml.jackson.dataformat</groupId>
+		    <artifactId>jackson-dataformat-xml</artifactId>
+		    <version>2.13.0</version>
+		</dependency>
 		<!-- Needed for parsing the config -->
         <dependency>
             <groupId>org.yaml</groupId>
