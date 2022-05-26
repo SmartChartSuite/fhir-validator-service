@@ -76,7 +76,7 @@ public class GenericProvider{
 		df.setTimeZone(tz);
 		FhirContext ctx = FhirContext.forR4();
 		jsonParser = ctx.newJsonParser().setPrettyPrint(true);
-		xmlParser = ctx.newXmlParser();
+		xmlParser = ctx.newXmlParser().setPrettyPrint(true);
 		jsonMapper = new ObjectMapper();
 		xmlMapper = new XmlMapper();
 	}
@@ -149,8 +149,8 @@ public class GenericProvider{
 		}
 		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
 			currentParser = xmlParser;
-			currentMapper = xmlMapper;
-			servletResponse.setContentType("application/xml");
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json"); //Leaving output response as json regardless of content
 		}
 		else {
 			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
