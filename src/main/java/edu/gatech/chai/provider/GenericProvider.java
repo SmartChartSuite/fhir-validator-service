@@ -36,6 +36,8 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import ca.uhn.fhir.context.FhirContext;
@@ -127,7 +129,7 @@ public class GenericProvider{
 			HttpServletRequest servletRequest,
 			HttpServletResponse servletResponse) throws Exception {
 		//TODO: Handle exceptions
-		logger.info("Received $validate-fast operation call");
+		logger.info("Received $validate operation call");
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
 		String contentType = servletRequest.getContentType();
@@ -163,7 +165,6 @@ public class GenericProvider{
 		}
 		String fileName = "";
 		//You have to write the resource to disk for the service to use it.
-		String resourceBody = jsonParser.encodeResourceToString(validatingResource);
 		String nowAsISO = df.format(new Date());
 		fileName = nowAsISO;
 		//Write the source to file so validatorService can use it
@@ -184,6 +185,7 @@ public class GenericProvider{
 					" application/xml, application/fhir+xml",servletResponse,currentParser);
 			return;
 		}
+		String resourceBody = currentParser.encodeResourceToString(validatingResource);
 		
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
@@ -219,7 +221,7 @@ public class GenericProvider{
 		tts.end();
 		logger.info("Retrieving ValidatorEngine");
 		ValidationEngine validator = validationService.getValidationEngine(sessionId);
-		ArrayNode returnNode = null;
+		ArrayNode issuesNode = null;
 		//Actually do the validation
 		logger.info("Starting profile loading.");
 		for (String s : cliContext.getProfiles()) {
@@ -235,8 +237,11 @@ public class GenericProvider{
 			validationScanner.validateScan(cliContext.getOutput(), cliContext.getSources());
 		} else {
 			logger.info("running validate sources mode.");
-			returnNode = validationService.validateSources(cliContext, validator);
+			issuesNode = validationService.validateSources(cliContext, validator);
 		}
+		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
+		returnNode.set("issues", issuesNode);
+		returnNode.put("formattedResource", resourceBody);
 		//Handle Response
 		String responseContent;
 		try {
