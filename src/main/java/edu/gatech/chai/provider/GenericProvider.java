@@ -1,65 +1,48 @@
 package edu.gatech.chai.provider;
 
-import java.io.BufferedReader;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
-import java.lang.ProcessBuilder.Redirect;
-import java.net.URLDecoder;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
-import java.util.concurrent.TimeUnit;
-import java.util.jar.JarFile;
-import java.util.jar.Manifest;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.commons.io.IOUtils;
-import org.hl7.fhir.instance.model.api.IBaseResource;
-import org.hl7.fhir.r4.model.*;
+import org.apache.http.HttpStatus;
+import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.OperationOutcome;
+import org.hl7.fhir.r4.model.Parameters;
+import org.hl7.fhir.r4.model.Resource;
+import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
-import org.hl7.fhir.validation.ValidatorCli;
+import org.hl7.fhir.r5.model.ImplementationGuide;
+import org.hl7.fhir.r5.model.StructureDefinition;
+import org.hl7.fhir.utilities.TimeTracker;
+import org.hl7.fhir.utilities.VersionUtilities;
+import org.hl7.fhir.validation.Scanner;
+import org.hl7.fhir.validation.ValidationEngine;
+import org.hl7.fhir.validation.cli.model.CliContext;
+import org.hl7.fhir.validation.cli.utils.EngineMode;
+import org.hl7.fhir.validation.cli.utils.Params;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
-import org.springframework.core.io.ClassPathResource;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 
 import ca.uhn.fhir.context.FhirContext;
-import ca.uhn.fhir.model.api.IResource;
 import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
-import ca.uhn.fhir.rest.annotation.OperationParam;
-import ca.uhn.fhir.rest.api.EncodingEnum;
-import ca.uhn.fhir.rest.param.SpecialParam;
-import ca.uhn.fhir.rest.param.StringParam;
-import ca.uhn.fhir.rest.server.IResourceProvider;
-import edu.gatech.chai.security.NoExitSecurityManager;
+import edu.gatech.chai.service.MyValidationService;
 
 public class GenericProvider{
 	
@@ -70,6 +53,10 @@ public class GenericProvider{
 	IParser xmlParser;
 	ObjectMapper jsonMapper;
 	ObjectMapper xmlMapper;
+
+	MyValidationService validationService;
+	String sessionId; //This is the validator sessionId that must be preserved.
+	
 	public GenericProvider() {
 		TimeZone tz = TimeZone.getTimeZone("UTC");
 		df = new SimpleDateFormat("yyyy-MM-dd'T'HHmmss");
@@ -79,6 +66,8 @@ public class GenericProvider{
 		xmlParser = ctx.newXmlParser().setPrettyPrint(true);
 		jsonMapper = new ObjectMapper();
 		xmlMapper = new XmlMapper();
+		validationService = new MyValidationService();
+		sessionId = "";
 	}
 	
 	@Operation(name = "$translate", manualRequest = true, manualResponse = true)
@@ -132,31 +121,16 @@ public class GenericProvider{
 		createErrorOperationOutcome("Could not parse Parameters options. Expecting stringParam named 'ig' and resourceParam named 'resource'",servletResponse,sourceParser);
 		return;
 	}
-	
-	
+
 	@Operation(name = "$validate", manualRequest = true, manualResponse = true)
-	public void validateResource(
+	public void validateResourceFast(
 			HttpServletRequest servletRequest,
-			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation to genericprovider");
+			HttpServletResponse servletResponse) throws Exception {
+		//TODO: Handle exceptions
+		logger.info("Received $validate-fast operation call");
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
 		String contentType = servletRequest.getContentType();
-		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
-			currentParser = jsonParser;
-			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json");
-		}
-		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
-			currentParser = xmlParser;
-			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json"); //Leaving output response as json regardless of content
-		}
-		else {
-			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
-					" application/xml, application/fhir+xml",servletResponse,currentParser);
-			return;
-		}
 		Resource myParametersResource = null;
 		try {
 			myParametersResource = (Parameters)currentParser.parseResource(servletRequest.getInputStream());
@@ -164,42 +138,53 @@ public class GenericProvider{
 			createErrorOperationOutcome("Error serializing request body:" + e.getLocalizedMessage(),servletResponse,currentParser);
 			return;
 		}
+		Resource validatingResource = null;
+		StringType igParam = null;
 		if(myParametersResource instanceof Parameters) {
 			Parameters parameters = (Parameters)myParametersResource;
-			StringType ig = (StringType)parameters.getParameter("ig");
+			igParam = (StringType)parameters.getParameter("ig");
 			for(ParametersParameterComponent ppc: parameters.getParameter()) {
 				if(ppc.getName().equalsIgnoreCase("resource")) {
-					Resource validatingResource = ppc.getResource();
-					baseValidate(ig,validatingResource,currentParser,currentMapper,servletResponse);
-					return;
+					validatingResource = ppc.getResource();
 				}
 			}
 		}
-		else {
+		if (validatingResource == null || igParam == null){
 			createErrorOperationOutcome("Expected Parameters instead found " + myParametersResource.fhirType(),servletResponse,currentParser);
 			return;
 		}
-		createErrorOperationOutcome("Could not parse Parameters options. Expecting stringParam named 'ig' and resourceParam named 'resource'",servletResponse,currentParser);
-		return;
-	}
-	
-	
-	public HttpServletResponse baseValidate(StringType ig,Resource resource, IParser currentParser, ObjectMapper currentMapper, HttpServletResponse servletResponse) {
-		String resourceType = resource.getResourceType().toString();
-		String resourceBody = currentParser.encodeResourceToString(resource);
+		//TimeTracker is required for ValidationService
+		TimeTracker tt = new TimeTracker();
+		//Setup args as if they were String[] like CLI
+		List<String> cliArgsList = new ArrayList<String>();
+		if(!igParam.isEmpty()){
+			cliArgsList.add("-ig");
+			cliArgsList.add(igParam.getValue());
+		}
+		String fileName = "";
+		//You have to write the resource to disk for the service to use it.
+		String resourceBody = jsonParser.encodeResourceToString(validatingResource);
 		String nowAsISO = df.format(new Date());
-		String fileType = "";
-		if(currentParser.getEncoding().equals(EncodingEnum.JSON)) {
-			fileType = ".json";
+		fileName = nowAsISO;
+		//Write the source to file so validatorService can use it
+		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+			fileName = fileName + ".json";
+			currentParser = jsonParser;
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json");
 		}
-		else if(currentParser.getEncoding().equals(EncodingEnum.XML)) {
-			fileType = ".xml";
+		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+			fileName = fileName + ".xml";
+			currentParser = xmlParser;
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json");
 		}
-		String fileName = resource.getResourceType().toString() + nowAsISO + fileType;
-		//Write the source to file so validatorCLI can use it
-		if(ig == null) {
-			ig = new StringType("hl7.fhir.us.mdi#current");
+		else {
+			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+					" application/xml, application/fhir+xml",servletResponse,currentParser);
+			return;
 		}
+		
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
 		try {
@@ -209,98 +194,56 @@ public class GenericProvider{
 			fos.write(sourceContentBytes);
 			fos.close();
 		} catch (IOException e1) {
-			createErrorOperationOutcome("Could not access and create file:"+tempFile.getAbsolutePath(),servletResponse,currentParser);
+			OperationOutcome oo = new OperationOutcome();
+			oo.addIssue()
+			.setSeverity(IssueSeverity.FATAL)
+			.setDetails(new CodeableConcept().setText("Could not access and create file:"+tempFile.getAbsolutePath()));
+			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
 			e1.printStackTrace();
-			return servletResponse;
+			return;
 		}
-		List<String> parameters = new ArrayList<String>();
-		parameters.add("java"); //Manually setting up another java process
-		parameters.add("-jar");
-		parameters.add("validator_cli.jar");
-		parameters.add(tempFile.getAbsolutePath());
-		if(!ig.getValue().isEmpty()) {
-			parameters.add("-ig");
-			parameters.add(ig.getValue());
+		cliArgsList.add(fileName); //Note file name is last in the set
+		TimeTracker.Session tts = tt.start("Loading");
+		//Make CLIContext
+		CliContext cliContext = Params.loadCliContext(cliArgsList.toArray(new String[0]));
+		//Use the validationservice to set the Server Version
+		cliContext.setSv(validationService.determineVersion(cliContext));
+		//If the sessionId exists; use it to help initialize. THIS IS WHAT IS SUPPOSED TO CACHE THE PACKAGES
+		String definitions = VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
+		logger.info("Initializing Validator");
+		//Make Validation Engine
+		// Comment this out because definitions filename doesn't necessarily contain version (and many not even be 14 characters long).
+    	// Version gets spit out a couple of lines later after we've loaded the context
+    	sessionId = validationService.initializeValidator(cliContext, definitions, tt, sessionId);
+		logger.info("Session id:"+sessionId);
+		tts.end();
+		logger.info("Retrieving ValidatorEngine");
+		ValidationEngine validator = validationService.getValidationEngine(sessionId);
+		ArrayNode returnNode = null;
+		//Actually do the validation
+		logger.info("Starting profile loading.");
+		for (String s : cliContext.getProfiles()) {
+		//Note maybe a weird versioning issue here. since we're using R5 versions of StructureDefinition and ImplementationGuide
+		if (!validator.getContext().hasResource(StructureDefinition.class, s) && !validator.getContext().hasResource(ImplementationGuide.class, s)) {
+			logger.info("  Fetch Profile from " + s);
+			validator.loadProfile(cliContext.getLocations().getOrDefault(s, s));
 		}
-		/*if(!profile.getValue().isEmpty()) {
-			parameters.add("-profile");
-			parameters.add(profile.getValue());
-		}*/
-		org.springframework.core.io.Resource jarResource = new ClassPathResource("validator_cli.jar");
-		String directoryLocation = "";
-		try {
-			directoryLocation = jarResource.getFile().getParent();
-		} catch (IOException e2) {
-			createErrorOperationOutcome("Could not find validator_cli.jar:"+e2.getLocalizedMessage(),servletResponse,currentParser);
-			e2.printStackTrace();
-			return servletResponse;
 		}
-		ProcessBuilder pb = new ProcessBuilder(parameters.toArray(new String[0]));
-		File errorFile = pb.redirectError(new File("validatorErrorStream.log")).redirectError().file();
-		File outputFile = pb.redirectOutput(new File("validatorOutputStream.log")).redirectOutput().file();
-		pb.directory(new File(directoryLocation));
-		Process validatorProcess;
-		try {
-			validatorProcess = pb.start();
-			validatorProcess.waitFor(4, TimeUnit.MINUTES); //4 minute timeout for now
-		} catch (IOException e) {
-			createErrorOperationOutcome("Could not start validator process:"+e.getLocalizedMessage(),servletResponse,currentParser);
-			e.printStackTrace();
-			return servletResponse;
-		} catch (InterruptedException e) {
-			createErrorOperationOutcome("Interruption error with validator_cli.jar:"+e.getLocalizedMessage(),servletResponse,currentParser);
-			e.printStackTrace();
-			return servletResponse;
+		if (cliContext.getMode() == EngineMode.SCAN) {
+			logger.info("running scanning mode.");
+			Scanner validationScanner = new Scanner(validator.getContext(), validator.getValidator(null), validator.getIgLoader(), validator.getFhirPathEngine());
+			validationScanner.validateScan(cliContext.getOutput(), cliContext.getSources());
+		} else {
+			logger.info("running validate sources mode.");
+			returnNode = validationService.validateSources(cliContext, validator);
 		}
-		finally {
-			//Seems like process builder redirect closes it for itself
-		}
-		StringBuilder errorBuilder = new StringBuilder();
-		try {
-			BufferedReader errorReader = 
-	                new BufferedReader(new FileReader(errorFile));
-			String errorLine = null;
-			while ( (errorLine = errorReader.readLine()) != null) {
-			   errorBuilder.append(errorLine);
-			   errorBuilder.append(System.getProperty("line.separator"));
-			}
-		} catch (IOException e) {
-			createErrorOperationOutcome("Could not read line from process error steram:"+e.getLocalizedMessage(),servletResponse,currentParser);
-			e.printStackTrace();
-			return servletResponse;
-		}
-		String errorResult = errorBuilder.toString();
-		if(errorResult != null && !errorResult.isBlank()) {
-			logger.error(errorResult);
-			createErrorOperationOutcome("Error running external validator_cli.jar:"+errorResult,servletResponse,currentParser);
-			return servletResponse;
-		}
-		StringBuilder builder = new StringBuilder();
-		try {
-			BufferedReader reader = 
-	                new BufferedReader(new FileReader(outputFile));
-			String line = null;
-			while ( (line = reader.readLine()) != null) {
-			   builder.append(line);
-			   builder.append(System.getProperty("line.separator"));
-			}
-		} catch (IOException e) {
-			createErrorOperationOutcome("Could not read line from process input steram:"+e.getLocalizedMessage(),servletResponse,currentParser);
-			e.printStackTrace();
-			return servletResponse;
-		}
-		String result = builder.toString();
-		JsonNode issuesJson = convertHL7ValidatorOutputToJsonIssues(result);
-		//Add original resource body as a json string body here.
-		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
-		returnNode.put("issues", issuesJson);
-		returnNode.put("formattedResource", resourceBody);
+		//Handle Response
 		String responseContent;
 		try {
 			responseContent = currentMapper.writeValueAsString(returnNode);
 		} catch (JsonProcessingException e1) {
 			createErrorOperationOutcome(e1.getLocalizedMessage(),servletResponse,currentParser);
-			return servletResponse;
+			return;
 		}
 		try {
 			servletResponse.getWriter().write(responseContent);
@@ -308,90 +251,7 @@ public class GenericProvider{
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		return servletResponse;
-	}
-	
-	private JsonNode convertHL7ValidatorOutputToJsonIssues(String string){
-		logger.info(string);
-		String[] lines = string.split("\n");
-		logger.info(string);
-		int lineNumber = findLineThatStartsTheReport(lines);
-		String[] issueLines = Arrays.copyOfRange(lines, lineNumber+1, lines.length);
-		return linesToIssue(issueLines);
-	}
-	
-	private JsonNode convertHL7ValidatorOutputToJsonIssues(ByteArrayOutputStream baos){
-		String[] lines = baos.toString().split("\n");
-		logger.info(baos.toString());
-		int lineNumber = findLineThatStartsTheReport(lines);
-		String[] issueLines = Arrays.copyOfRange(lines, lineNumber+1, lines.length);
-		return linesToIssue(issueLines);
-	}
-	
-	private int findLineThatStartsTheReport(String[]lines) {
-		Pattern headerPattern = Pattern.compile("[\\d,]+ errors, [\\d,]+ warnings, [\\d,]+ notes");
-		for(int i=0;i<lines.length;i++) {
-			Matcher matcher = headerPattern.matcher(lines[i]);
-			if(matcher.find()) {
-				return i;
-			}
-		}
-		return -1;
-	}
-	
-	private ArrayNode linesToIssue(String[]lines) {
-		ArrayNode returnNode = JsonNodeFactory.instance.arrayNode();
-		Pattern linePattern = Pattern.compile("\\w*(Warning|Error|Note|Information|Fatal) @ "
-				+ "([\\w\\[\\]\\(\\)]+(\\.[\\w\\[\\]\\(\\)]+)*|\\?\\?|\\(document\\)|(\\/f:.*))\\s"
-				+ "(\\(line \\d+, col\\d+\\))?"
-				+ ": (.*)");
-		Pattern allOKPattern = Pattern.compile("\\w*Information: All OK");
-		for(String line:lines) {
-			Matcher matcher = linePattern.matcher(line);
-			Matcher allOKMatcher = allOKPattern.matcher(line);
-			if(matcher.find()) {
-				String severity = null;
-				String fhirPath = null;
-				String location = null;
-				String message = null;
-				if(matcher.group(1) != null) {
-					severity = matcher.group(1);
-					fhirPath = matcher.group(2);
-					location = matcher.group(5) == null ? "??" : matcher.group(5);
-					message = matcher.group(6);
-				}
-				else {
-					continue;
-				}
-				ObjectNode issueNode = JsonNodeFactory.instance.objectNode();
-				issueNode.put("severity", severity);
-				issueNode.put("fhirPath", fhirPath);
-				if(!location.equalsIgnoreCase("??")) {
-					Pattern locationRowAndColPattern = Pattern.compile("\\(line (\\d+), col(\\d+)\\)");
-					Matcher locationMatcher = locationRowAndColPattern.matcher(location);
-					if(matcher.find()) {
-						String row = matcher.group(1);
-						String col = matcher.group(2);
-						ObjectNode locationJson = JsonNodeFactory.instance.objectNode();
-						locationJson.put("row", row);
-						locationJson.put("col", col);
-						issueNode.set("locationObj", locationJson);
-					}
-				}
-				issueNode.put("location", location);
-				issueNode.put("message", message);
-				returnNode.add(issueNode);
-			}
-			else if(allOKMatcher.find()) {
-				ObjectNode issueNode = JsonNodeFactory.instance.objectNode();
-				issueNode.put("severity", "Information");
-				issueNode.put("fhirPath", "");
-				issueNode.put("location", "");
-				issueNode.put("message", "ALL OK");
-				returnNode.add(issueNode);
-			}
-		}
-		return returnNode;
+		return;
 	}
 	
 	private OperationOutcome createErrorOperationOutcome(String message, HttpServletResponse servletResponse, IParser currentParser) {
@@ -410,6 +270,7 @@ public class GenericProvider{
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		servletResponse.setStatus(HttpStatus.SC_INTERNAL_SERVER_ERROR);
 		return servletResponse;
 	}
 }
