@@ -76,7 +76,7 @@ public class GenericProvider{
 	public void translateResource(
 			HttpServletRequest servletRequest,
 			HttpServletResponse servletResponse) {
-		logger.info("Received $validate operation to genericprovider");
+		logger.info("Received $translate operation to genericprovider");
 		IParser sourceParser = jsonParser;
 		IParser targetParser = xmlParser;
 		String contentType = servletRequest.getContentType();
@@ -133,6 +133,21 @@ public class GenericProvider{
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
 		String contentType = servletRequest.getContentType();
+		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+			currentParser = jsonParser;
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json");
+		}
+		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+			currentParser = xmlParser;
+			currentMapper = jsonMapper;
+			servletResponse.setContentType("application/json");
+		}
+		else {
+			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+					" application/xml, application/fhir+xml",servletResponse,currentParser);
+			return;
+		}
 		Resource myParametersResource = null;
 		try {
 			myParametersResource = (Parameters)currentParser.parseResource(servletRequest.getInputStream());
@@ -170,20 +185,9 @@ public class GenericProvider{
 		//Write the source to file so validatorService can use it
 		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
 			fileName = fileName + ".json";
-			currentParser = jsonParser;
-			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json");
 		}
 		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
 			fileName = fileName + ".xml";
-			currentParser = xmlParser;
-			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json");
-		}
-		else {
-			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
-					" application/xml, application/fhir+xml",servletResponse,currentParser);
-			return;
 		}
 		String resourceBody = currentParser.encodeResourceToString(validatingResource);
 		
