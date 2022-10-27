@@ -14,6 +14,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.http.HttpStatus;
+import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.Parameters;
@@ -157,9 +158,11 @@ public class GenericProvider{
 		}
 		Resource validatingResource = null;
 		StringType igParam = null;
+		BooleanType includeFormattedResource = null;
 		if(myParametersResource instanceof Parameters) {
 			Parameters parameters = (Parameters)myParametersResource;
 			igParam = (StringType)parameters.getParameter("ig");
+			includeFormattedResource = (BooleanType) parameters.getParameter("includeFormattedResource");
 			for(ParametersParameterComponent ppc: parameters.getParameter()) {
 				if(ppc.getName().equalsIgnoreCase("resource")) {
 					validatingResource = ppc.getResource();
@@ -245,7 +248,9 @@ public class GenericProvider{
 		}
 		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
 		returnNode.set("issues", issuesNode);
-		returnNode.put("formattedResource", resourceBody);
+		if(includeFormattedResource != null && includeFormattedResource.booleanValue()){
+			returnNode.put("formattedResource", resourceBody);
+		}
 		//Handle Response
 		String responseContent;
 		try {
