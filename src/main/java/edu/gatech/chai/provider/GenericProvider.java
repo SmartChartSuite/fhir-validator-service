@@ -1,5 +1,4 @@
 package edu.gatech.chai.provider;
-
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -10,7 +9,9 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.stream.Collectors;
 
+import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -135,7 +136,8 @@ public class GenericProvider{
 		logger.info("Received $validate operation call");
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
-		String contentType = servletRequest.getContentType();
+		//application/xml; utf-8
+		String contentType = servletRequest.getContentType().split(";")[0];
 		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
 			currentParser = jsonParser;
 			currentMapper = jsonMapper;
