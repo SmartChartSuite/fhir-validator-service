@@ -1,5 +1,5 @@
 #Build the Maven project
-FROM maven:3.8.3-openjdk-16 as builder
+FROM docker.io/library/maven:3.9.2-eclipse-temurin-17 AS builder
 COPY . /usr/src/app
 WORKDIR /usr/src/app
 RUN mvn clean install
