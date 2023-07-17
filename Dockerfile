@@ -18,7 +18,7 @@ RUN mkdir -p /var/lib/jetty/webapps/config
 # Uncomment the following line if you wish to deploy both versions of the CQF Ruler HAPI FHIR server.
 # Note: You will need to provide the cqf-ruler-dstu3.war in the appropriate location from the main CQF Ruler repository.
 # COPY --chown=jetty:jetty ./cqf-ruler-dstu3/target/cqf-ruler-dstu3.war /var/lib/jetty/webapps/cqf-ruler-stu3.war
-COPY --from=builder --chown=jetty:jetty /usr/src/app/target/HL7ValidatorService.war /var/lib/jetty/webapps/HL7ValidatorService.war
+COPY --from=builder --chown=jetty:jetty /usr/src/app/target/ROOT.war /var/lib/jetty/webapps/HL7ValidatorService.war
 EXPOSE 8080
 
 # Uncomment the appropriate lines below if you intend to not use the Docker Compose deployment.
