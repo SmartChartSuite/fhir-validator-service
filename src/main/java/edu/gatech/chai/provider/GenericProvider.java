@@ -3,6 +3,7 @@ package edu.gatech.chai.provider;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.lang.reflect.Parameter;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
+import com.github.dnault.xmlpatch.internal.Log;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.DataFormatException;
@@ -161,11 +163,16 @@ public class GenericProvider{
 		BooleanType includeFormattedResource = null;
 		if(myParametersResource instanceof Parameters) {
 			Parameters parameters = (Parameters)myParametersResource;
-			igParam = (StringType)parameters.getParameter("ig");
-			includeFormattedResource = (BooleanType) parameters.getParameter("includeFormattedResource");
-			for(ParametersParameterComponent ppc: parameters.getParameter()) {
-				if(ppc.getName().equalsIgnoreCase("resource")) {
-					validatingResource = ppc.getResource();
+			for(ParametersParameterComponent p: parameters.getParameter()){
+				logger.info("Parameter:"+p.getName());
+				if(p.getName().equalsIgnoreCase("ig")){
+					igParam = (StringType)p.getValue();
+				}
+				if(p.getName().equalsIgnoreCase("includeFormattedResource")){
+					includeFormattedResource = (BooleanType) p.getValue();
+				}
+				if(p.getName().equalsIgnoreCase("resource")) {
+					validatingResource = p.getResource();
 				}
 			}
 		}
@@ -217,7 +224,7 @@ public class GenericProvider{
 		CliContext cliContext = Params.loadCliContext(cliArgsList.toArray(new String[0]));
 		//Use the validationservice to set the Server Version
 		cliContext.setSv(validationService.determineVersion(cliContext));
-		//If the sessionId exists; use it to help initialize. THIS IS WHAT IS SUPPOSED TO CACHE THE PACKAGES
+		//If the sessionId exists; use it to help initialize without recreating the context
 		String definitions = VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
 		logger.info("Initializing Validator");
 		//Make Validation Engine
