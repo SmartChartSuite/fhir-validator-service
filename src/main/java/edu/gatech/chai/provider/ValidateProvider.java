@@ -35,6 +35,8 @@ import org.hl7.fhir.validation.cli.utils.EngineMode;
 import org.hl7.fhir.validation.cli.utils.Params;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.DefaultCorsProcessor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -48,11 +50,13 @@ import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
+import ca.uhn.fhir.rest.api.Constants;
+import ca.uhn.fhir.rest.server.interceptor.CorsInterceptor;
 import edu.gatech.chai.service.MyValidationService;
 
-public class GenericProvider{
+public class ValidateProvider{
 	
-	private static final Logger logger = LoggerFactory.getLogger(GenericProvider.class);
+	private static final Logger logger = LoggerFactory.getLogger(ValidateProvider.class);
 	
 	DateFormat df;
 	IParser jsonParser;
@@ -61,9 +65,10 @@ public class GenericProvider{
 	ObjectMapper xmlMapper;
 
 	MyValidationService validationService;
+	DefaultCorsProcessor defaultCorsProcessor;
 	String sessionId; //This is the validator sessionId that must be preserved.
 	
-	public GenericProvider() {
+	public ValidateProvider() {
 		TimeZone tz = TimeZone.getTimeZone("UTC");
 		df = new SimpleDateFormat("yyyy-MM-dd'T'HHmmss");
 		df.setTimeZone(tz);
@@ -73,14 +78,19 @@ public class GenericProvider{
 		jsonMapper = new ObjectMapper();
 		xmlMapper = new XmlMapper();
 		validationService = new MyValidationService();
+		defaultCorsProcessor = new DefaultCorsProcessor();
 		sessionId = "";
 	}
 	
 	@Operation(name = "$translate", manualRequest = true, manualResponse = true)
 	public void translateResource(
 			HttpServletRequest servletRequest,
-			HttpServletResponse servletResponse) {
+			HttpServletResponse servletResponse) throws Exception{
 		logger.info("Received $translate operation to genericprovider");
+		boolean corsProcessed = defaultCorsProcessor.processRequest(createDefaultCorsConfig(), servletRequest, servletResponse);
+		if(!corsProcessed){
+			return;
+		}
 		IParser sourceParser = jsonParser;
 		IParser targetParser = xmlParser;
 		String contentType = servletRequest.getContentType();
@@ -134,6 +144,10 @@ public class GenericProvider{
 			HttpServletResponse servletResponse) throws Exception {
 		//TODO: Handle exceptions
 		logger.info("Received $validate operation call");
+		boolean corsProcessed = defaultCorsProcessor.processRequest(createDefaultCorsConfig(), servletRequest, servletResponse);
+		if(!corsProcessed){
+			return;
+		}
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
 		//application/xml; utf-8
@@ -178,8 +192,12 @@ public class GenericProvider{
 				}
 			}
 		}
-		if (validatingResource == null || igParam == null){
-			createErrorOperationOutcome("Expected Parameters instead found " + myParametersResource.fhirType(),servletResponse,currentParser);
+		if (validatingResource == null){
+			createErrorOperationOutcome("$Validate operation requires a parameter named 'resource' and a 'resource' value but found none.",servletResponse,currentParser);
+			return;
+		}
+		if (igParam == null){
+			createErrorOperationOutcome("$Validate operation requires a parameter named 'ig' with a 'valueString' value but found none.",servletResponse,currentParser);
 			return;
 		}
 		//TimeTracker is required for ValidationService
@@ -296,4 +314,15 @@ public class GenericProvider{
 		servletResponse.setStatus(HttpStatus.SC_INTERNAL_SERVER_ERROR);
 		return servletResponse;
 	}
+
+	//Manual creationg of Cors configuration for the defaultcorshandler
+	private static CorsConfiguration createDefaultCorsConfig() {
+		CorsConfiguration retVal = new CorsConfiguration();
+		retVal.setAllowedHeaders(new ArrayList(Constants.CORS_ALLOWED_HEADERS));
+		retVal.setAllowedMethods(new ArrayList(Constants.CORS_ALLWED_METHODS));
+		retVal.addExposedHeader("Content-Location");
+		retVal.addExposedHeader("Location");
+		retVal.addAllowedOrigin("*");
+		return retVal;
+   }
 }
