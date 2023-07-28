@@ -126,6 +126,7 @@ public class ValidateProvider{
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
+					postProcess(servletResponse);
 					return;
 				}
 			}
@@ -236,6 +237,7 @@ public class ValidateProvider{
 			.setDetails(new CodeableConcept().setText("Could not access and create file:"+tempFile.getAbsolutePath()));
 			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
 			e1.printStackTrace();
+			postProcess(servletResponse);
 			return;
 		}
 		cliArgsList.add(fileName); //Note file name is last in the set
@@ -292,6 +294,7 @@ public class ValidateProvider{
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		postProcess(servletResponse);
 		return;
 	}
 	
@@ -301,6 +304,7 @@ public class ValidateProvider{
 		.setSeverity(IssueSeverity.FATAL)
 		.setDetails(new CodeableConcept().setText(message));
 		setResponseAsOperationOutcome(servletResponse,oo,currentParser);
+		postProcess(servletResponse);
 		return oo;
 	}
 	
@@ -324,5 +328,12 @@ public class ValidateProvider{
 		retVal.addExposedHeader("Location");
 		retVal.addAllowedOrigin("*");
 		return retVal;
+   }
+
+   private static HttpServletResponse postProcess(HttpServletResponse servletResponse){
+		if(servletResponse.getHeader("access-control-allow-origin") == null){
+			servletResponse.addHeader("access-control-allow-origin", "*");
+		}
+		return servletResponse;
    }
 }
