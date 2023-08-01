@@ -7,8 +7,11 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.servlet.ServletInputStream;
@@ -16,13 +19,18 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import org.apache.http.HttpStatus;
+import org.hl7.fhir.instance.model.api.IBaseDatatype;
+import org.hl7.fhir.instance.model.api.IBaseResource;
 import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.CodeableConcept;
+import org.hl7.fhir.r4.model.Extension;
+import org.hl7.fhir.r4.model.IntegerType;
 import org.hl7.fhir.r4.model.OperationOutcome;
 import org.hl7.fhir.r4.model.Parameters;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.StringType;
 import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
+import org.hl7.fhir.r4.model.OperationOutcome.OperationOutcomeIssueComponent;
 import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r5.model.ImplementationGuide;
 import org.hl7.fhir.r5.model.StructureDefinition;
@@ -39,6 +47,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.DefaultCorsProcessor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
@@ -50,8 +59,8 @@ import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
+import ca.uhn.fhir.rest.annotation.OperationParam;
 import ca.uhn.fhir.rest.api.Constants;
-import ca.uhn.fhir.rest.server.interceptor.CorsInterceptor;
 import edu.gatech.chai.service.MyValidationService;
 
 public class ValidateProvider{
@@ -60,6 +69,7 @@ public class ValidateProvider{
 	
 	DateFormat df;
 	IParser jsonParser;
+	IParser r5Parser;
 	IParser xmlParser;
 	ObjectMapper jsonMapper;
 	ObjectMapper xmlMapper;
@@ -67,6 +77,7 @@ public class ValidateProvider{
 	MyValidationService validationService;
 	DefaultCorsProcessor defaultCorsProcessor;
 	String sessionId; //This is the validator sessionId that must be preserved.
+	Pattern lineAndColPattern = Pattern.compile("^\\(line\\s*(?<line>\\d+),\\s*col(?<col>\\d+)\\)$");
 	
 	public ValidateProvider() {
 		TimeZone tz = TimeZone.getTimeZone("UTC");
@@ -75,6 +86,7 @@ public class ValidateProvider{
 		FhirContext ctx = FhirContext.forR4();
 		jsonParser = ctx.newJsonParser().setPrettyPrint(true);
 		xmlParser = ctx.newXmlParser().setPrettyPrint(true);
+		r5Parser = FhirContext.forR5().newJsonParser().setPrettyPrint(true);
 		jsonMapper = new ObjectMapper();
 		xmlMapper = new XmlMapper();
 		validationService = new MyValidationService();
@@ -139,88 +151,50 @@ public class ValidateProvider{
 		return;
 	}
 
-	@Operation(name = "$validate", manualRequest = true, manualResponse = true)
-	public void validateResourceFast(
-			HttpServletRequest servletRequest,
-			HttpServletResponse servletResponse) throws Exception {
-		//TODO: Handle exceptions
+	@Operation(name = "$validate", global = true)
+	public OperationOutcome validateResource(
+			@OperationParam(name = "ig", min = 1) StringType ig,
+			@OperationParam(name = "format", min = 1) StringType format,
+			@OperationParam(name = "includeFormattedResource") BooleanType includeFormattedResource,
+			@OperationParam(name = "resource", min = 1) IBaseResource resource) throws Exception {
 		logger.info("Received $validate operation call");
-		boolean corsProcessed = defaultCorsProcessor.processRequest(createDefaultCorsConfig(), servletRequest, servletResponse);
-		if(!corsProcessed){
-			return;
-		}
+		logger.info("igParam:"+ig.toString());
+		logger.info("formatParam:"+format.toString());
 		IParser currentParser = jsonParser;
 		ObjectMapper currentMapper = jsonMapper;
 		//application/xml; utf-8
-		String contentType = servletRequest.getContentType().split(";")[0];
-		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+		if(format.getValue().equalsIgnoreCase("application/json") || format.getValue().equalsIgnoreCase("application/fhir+json")) {
 			currentParser = jsonParser;
 			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json");
 		}
-		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+		else if(format.getValue().equalsIgnoreCase("application/xml") || format.getValue().equalsIgnoreCase("application/fhir+xml")) {
 			currentParser = xmlParser;
 			currentMapper = jsonMapper;
-			servletResponse.setContentType("application/json");
 		}
 		else {
-			createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
-					" application/xml, application/fhir+xml",servletResponse,currentParser);
-			return;
-		}
-		Resource myParametersResource = null;
-		try {
-			myParametersResource = (Parameters)currentParser.parseResource(servletRequest.getInputStream());
-		} catch (IOException e) {
-			createErrorOperationOutcome("Error serializing request body:" + e.getLocalizedMessage(),servletResponse,currentParser);
-			return;
-		}
-		Resource validatingResource = null;
-		StringType igParam = null;
-		BooleanType includeFormattedResource = null;
-		if(myParametersResource instanceof Parameters) {
-			Parameters parameters = (Parameters)myParametersResource;
-			for(ParametersParameterComponent p: parameters.getParameter()){
-				logger.info("Parameter:"+p.getName());
-				if(p.getName().equalsIgnoreCase("ig")){
-					igParam = (StringType)p.getValue();
-				}
-				if(p.getName().equalsIgnoreCase("includeFormattedResource")){
-					includeFormattedResource = (BooleanType) p.getValue();
-				}
-				if(p.getName().equalsIgnoreCase("resource")) {
-					validatingResource = p.getResource();
-				}
-			}
-		}
-		if (validatingResource == null){
-			createErrorOperationOutcome("$Validate operation requires a parameter named 'resource' and a 'resource' value but found none.",servletResponse,currentParser);
-			return;
-		}
-		if (igParam == null){
-			createErrorOperationOutcome("$Validate operation requires a parameter named 'ig' with a 'valueString' value but found none.",servletResponse,currentParser);
-			return;
+			return createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+					" application/xml, application/fhir+xml",currentParser);
 		}
 		//TimeTracker is required for ValidationService
 		TimeTracker tt = new TimeTracker();
 		//Setup args as if they were String[] like CLI
 		List<String> cliArgsList = new ArrayList<String>();
-		if(!igParam.isEmpty()){
+		if(!ig.isEmpty()){
 			cliArgsList.add("-ig");
-			cliArgsList.add(igParam.getValue());
+			cliArgsList.add(ig.getValue());
 		}
 		String fileName = "";
 		//You have to write the resource to disk for the service to use it.
 		String nowAsISO = df.format(new Date());
 		fileName = nowAsISO;
 		//Write the source to file so validatorService can use it
-		if(contentType.equalsIgnoreCase("application/json") || contentType.equalsIgnoreCase("application/fhir+json")) {
+		if(format.getValue().equalsIgnoreCase("application/json") || format.getValue().equalsIgnoreCase("application/fhir+json")) {
 			fileName = fileName + ".json";
 		}
-		else if(contentType.equalsIgnoreCase("application/xml") || contentType.equalsIgnoreCase("application/fhir+xml")) {
+		else if(format.getValue().equalsIgnoreCase("application/xml") || format.getValue().equalsIgnoreCase("application/fhir+xml")) {
 			fileName = fileName + ".xml";
 		}
-		String resourceBody = currentParser.encodeResourceToString(validatingResource);
+		String resourceBody = currentParser.encodeResourceToString(resource);
 		
 		File tempFile = new File(fileName);
 		FileOutputStream fos;
@@ -235,10 +209,8 @@ public class ValidateProvider{
 			oo.addIssue()
 			.setSeverity(IssueSeverity.FATAL)
 			.setDetails(new CodeableConcept().setText("Could not access and create file:"+tempFile.getAbsolutePath()));
-			setResponseAsOperationOutcome(servletResponse,oo,currentParser);
 			e1.printStackTrace();
-			postProcess(servletResponse);
-			return;
+			return oo;
 		}
 		cliArgsList.add(fileName); //Note file name is last in the set
 		TimeTracker.Session tts = tt.start("Loading");
@@ -250,22 +222,20 @@ public class ValidateProvider{
 		String definitions = VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
 		logger.info("Initializing Validator");
 		//Make Validation Engine
-		// Comment this out because definitions filename doesn't necessarily contain version (and many not even be 14 characters long).
-    	// Version gets spit out a couple of lines later after we've loaded the context
     	sessionId = validationService.initializeValidator(cliContext, definitions, tt, sessionId);
 		logger.info("Session id:"+sessionId);
 		tts.end();
 		logger.info("Retrieving ValidatorEngine");
 		ValidationEngine validator = validationService.getValidationEngine(sessionId);
-		ArrayNode issuesNode = null;
 		//Actually do the validation
 		logger.info("Starting profile loading.");
+		OperationOutcome successOO = new OperationOutcome();
 		for (String s : cliContext.getProfiles()) {
-		//Note maybe a weird versioning issue here. since we're using R5 versions of StructureDefinition and ImplementationGuide
+		//Note our validator is R5 but we're validating R4 resources, so StructureDefinition and ImplementationGuide here are R5 classes.
 		if (!validator.getContext().hasResource(StructureDefinition.class, s) && !validator.getContext().hasResource(ImplementationGuide.class, s)) {
 			logger.info("  Fetch Profile from " + s);
 			validator.loadProfile(cliContext.getLocations().getOrDefault(s, s));
-		}
+			}
 		}
 		if (cliContext.getMode() == EngineMode.SCAN) {
 			logger.info("running scanning mode.");
@@ -273,38 +243,52 @@ public class ValidateProvider{
 			validationScanner.validateScan(cliContext.getOutput(), cliContext.getSources());
 		} else {
 			logger.info("running validate sources mode.");
-			issuesNode = validationService.validateSources(cliContext, validator);
+			ArrayNode issuesNode = validationService.validateSources(cliContext, validator);
+			logger.info("Number of issues:"+issuesNode.size());
+			for(JsonNode issue:issuesNode){
+				OperationOutcomeIssueComponent ooic = new OperationOutcomeIssueComponent();
+				ooic.setSeverity(IssueSeverity.fromCode(((ObjectNode) issue).get("severity").toString().toLowerCase().replaceAll("\"","")));
+				ooic.addExpression(((ObjectNode) issue).get("fhirPath").toString().toString().toLowerCase().replaceAll("\"",""));
+				ooic.setDiagnostics(((ObjectNode) issue).get("message").toString().toString().toLowerCase().replaceAll("\"",""));
+				String locationString = ((ObjectNode) issue).get("location").toString().toString().toLowerCase().replaceAll("\"","");
+				ooic.addLocation(locationString);
+				Matcher locationMatcher = lineAndColPattern.matcher(locationString);
+				if(locationMatcher.matches()){
+					String line = locationMatcher.group("line");
+					String col = locationMatcher.group("col");
+					Extension lineAndColExtension = new Extension("urn:local:line-and-col");
+					Extension lineExtension = new Extension("urn:local:line", new IntegerType(line));
+					lineAndColExtension.addExtension(lineExtension);
+					Extension colExtension = new Extension("urn:local:col", new IntegerType(col));
+					lineAndColExtension.addExtension(colExtension);
+					ooic.addExtension(lineAndColExtension);
+				}
+				successOO.addIssue(ooic);
+			}
 		}
-		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
-		returnNode.set("issues", issuesNode);
 		if(includeFormattedResource != null && includeFormattedResource.booleanValue()){
-			returnNode.put("formattedResource", resourceBody);
+			Extension formattedResourceExtension = new Extension();
+			formattedResourceExtension.setUrl("urn:local:formattedResourceBody");
+			formattedResourceExtension.setValue(new StringType(resourceBody));
+			successOO.addExtension(formattedResourceExtension);
 		}
-		//Handle Response
-		String responseContent;
-		try {
-			responseContent = currentMapper.writeValueAsString(returnNode);
-		} catch (JsonProcessingException e1) {
-			createErrorOperationOutcome(e1.getLocalizedMessage(),servletResponse,currentParser);
-			return;
-		}
-		try {
-			servletResponse.getWriter().write(responseContent);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		postProcess(servletResponse);
-		return;
+		return successOO;
 	}
 	
-	private OperationOutcome createErrorOperationOutcome(String message, HttpServletResponse servletResponse, IParser currentParser) {
+	private OperationOutcome createErrorOperationOutcome(String message,IParser currentParser) {
+		OperationOutcome oo = new OperationOutcome();
+		oo.addIssue()
+		.setSeverity(IssueSeverity.FATAL)
+		.setDetails(new CodeableConcept().setText(message));
+		return oo;
+	}
+
+	private OperationOutcome createErrorOperationOutcome(String message,HttpServletResponse servletResponse, IParser currentParser) {
 		OperationOutcome oo = new OperationOutcome();
 		oo.addIssue()
 		.setSeverity(IssueSeverity.FATAL)
 		.setDetails(new CodeableConcept().setText(message));
 		setResponseAsOperationOutcome(servletResponse,oo,currentParser);
-		postProcess(servletResponse);
 		return oo;
 	}
 	
