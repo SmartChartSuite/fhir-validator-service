@@ -19,7 +19,7 @@
 
     <artifactId>HL7ValidatorService</artifactId>
     <packaging>war</packaging>
-	<version>6.6.0</version>
+	<version>6.6.1</version>
 
     <properties>
         <java.version>11</java.version>

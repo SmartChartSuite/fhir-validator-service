@@ -172,7 +172,7 @@ public class ValidateProvider{
 			currentMapper = jsonMapper;
 		}
 		else {
-			return createErrorOperationOutcome("Incorrect Content-Type Header. Expecting either application/json, application/fhir+json," +
+			return createErrorOperationOutcome("Incorrect format parameter. Expecting either application/json, application/fhir+json," +
 					" application/xml, application/fhir+xml",currentParser);
 		}
 		//TimeTracker is required for ValidationService
