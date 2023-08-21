@@ -39,6 +39,6 @@ This consist of a post body with an array of parameter components, each componen
 ### Technologies Used
 * Built on top of the base [hapi-fhir framework](https://hapifhir.io/)
 ### Authors
-* [Michael Riley](https://github.com/blackdevelopa)
+* [Michael Riley](Michael.Riley@gtri.gatech.edu)
 ### License
 This project is available for use under the Apache License.
