@@ -20,6 +20,7 @@ This service allows tooling to pass existing FHIR records (as json or xml) and r
 | --- | --- | --- | --- |
 | POST | /fhir/validate | resource,ig,format,includeFormattedResource | Validate FHIR resource against provided Implementation Guide(IG) |
 | POST | /fhir/translate | resource | Translate from json-to-xml or xml-to-json based on the content-type header |
+| GET | /fhir/packages | none | Retrieves all commonly-supported IG packages recommended for use in this service |
 #### fhir/validate request
 the fhir/validate endpoint uses a POST body of [FHIR parameters as described in the FHIR spec](https://hl7.org/fhir/R4/parameters.html)
 This consist of a post body with an array of parameter components, each component containing a name and a valueof a specific type
@@ -36,9 +37,11 @@ This consist of a post body with an array of parameter components, each componen
 | --- | --- | --- |
 | resource | resource | The fhir resource to be translated by the server. Inserted in the resource field as either json or xml |
 | format | valueString | A required parameter to hint to the validate which format to use when translating. Accepted values are: application/json, application/fhir+json, application/xml, application/fhir+xml |
+#### fhir/packages
+The fhir/packages endpoint provides a list of popular and highly-supported packages recommended for use with the validator-service.
 ### Technologies Used
 * Built on top of the base [hapi-fhir framework](https://hapifhir.io/)
 ### Authors
-* [Michael Riley](https://github.com/blackdevelopa)
+* [Michael Riley](Michael.Riley@gtri.gatech.edu)
 ### License
 This project is available for use under the Apache License.
