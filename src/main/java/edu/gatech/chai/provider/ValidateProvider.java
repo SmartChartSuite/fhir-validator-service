@@ -2,16 +2,16 @@ package edu.gatech.chai.provider;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Parameter;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import javax.servlet.ServletInputStream;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
@@ -19,11 +19,12 @@ import org.apache.http.HttpStatus;
 import org.hl7.fhir.r4.model.BooleanType;
 import org.hl7.fhir.r4.model.CodeableConcept;
 import org.hl7.fhir.r4.model.OperationOutcome;
+import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
 import org.hl7.fhir.r4.model.Parameters;
+import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
 import org.hl7.fhir.r4.model.Resource;
 import org.hl7.fhir.r4.model.StringType;
-import org.hl7.fhir.r4.model.OperationOutcome.IssueSeverity;
-import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
+import org.hl7.fhir.r5.elementmodel.Manager.FhirFormat;
 import org.hl7.fhir.r5.model.ImplementationGuide;
 import org.hl7.fhir.r5.model.StructureDefinition;
 import org.hl7.fhir.utilities.TimeTracker;
@@ -39,19 +40,19 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.DefaultCorsProcessor;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
-import com.github.dnault.xmlpatch.internal.Log;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.DataFormatException;
 import ca.uhn.fhir.parser.IParser;
 import ca.uhn.fhir.rest.annotation.Operation;
 import ca.uhn.fhir.rest.api.Constants;
-import ca.uhn.fhir.rest.server.interceptor.CorsInterceptor;
+import ca.uhn.fhir.validation.FhirValidator;
 import edu.gatech.chai.service.MyValidationService;
 
 public class ValidateProvider{
@@ -67,12 +68,11 @@ public class ValidateProvider{
 	MyValidationService validationService;
 	DefaultCorsProcessor defaultCorsProcessor;
 	String sessionId; //This is the validator sessionId that must be preserved.
-	
-	public ValidateProvider() {
+	String base_supported_igs;
+	public ValidateProvider(FhirContext ctx, String base_supported_igs) {
 		TimeZone tz = TimeZone.getTimeZone("UTC");
 		df = new SimpleDateFormat("yyyy-MM-dd'T'HHmmss");
 		df.setTimeZone(tz);
-		FhirContext ctx = FhirContext.forR4();
 		jsonParser = ctx.newJsonParser().setPrettyPrint(true);
 		xmlParser = ctx.newXmlParser().setPrettyPrint(true);
 		jsonMapper = new ObjectMapper();
@@ -80,6 +80,15 @@ public class ValidateProvider{
 		validationService = new MyValidationService();
 		defaultCorsProcessor = new DefaultCorsProcessor();
 		sessionId = "";
+		logger.info("base_supported_igs:"+base_supported_igs);
+		this.base_supported_igs = base_supported_igs;
+	}
+
+	@Operation(name = "$packages", manualRequest = true, manualResponse = true, global = true, idempotent = true)
+	public void testConfiguration(HttpServletRequest servletRequest,HttpServletResponse servletResponse) throws Exception{
+		ArrayNode jsonOutput = convertIGStringsToJson(Arrays.asList(base_supported_igs.split(",")));
+		servletResponse.getWriter().write(jsonMapper.writeValueAsString(jsonOutput));
+		return;
 	}
 	
 	@Operation(name = "$translate", manualRequest = true, manualResponse = true)
@@ -245,18 +254,26 @@ public class ValidateProvider{
 		//Make CLIContext
 		CliContext cliContext = Params.loadCliContext(cliArgsList.toArray(new String[0]));
 		//Use the validationservice to set the Server Version
+		logger.info("ValidationService determineVersion:"+validationService.determineVersion(cliContext));
 		cliContext.setSv(validationService.determineVersion(cliContext));
 		//If the sessionId exists; use it to help initialize without recreating the context
 		String definitions = VersionUtilities.packageForVersion(cliContext.getSv()) + "#" + VersionUtilities.getCurrentVersion(cliContext.getSv());
 		logger.info("Initializing Validator");
+		logger.info("definitions:"+definitions);
 		//Make Validation Engine
 		// Comment this out because definitions filename doesn't necessarily contain version (and many not even be 14 characters long).
     	// Version gets spit out a couple of lines later after we've loaded the context
     	sessionId = validationService.initializeValidator(cliContext, definitions, tt, sessionId);
 		logger.info("Session id:"+sessionId);
 		tts.end();
-		logger.info("Retrieving ValidatorEngine");
+		//TODO: Gracefully Handle tx.fhir.org unavailable
 		ValidationEngine validator = validationService.getValidationEngine(sessionId);
+		logger.info("ValidationEngine's LocalCache Folder:"+validator.getPcm().getFolder());
+		logger.info("IGs:");
+		for(ImplementationGuide IG:validator.getIgs()){
+			logger.info("\t"+IG.toString());
+		}
+		logger.info("ValidationEngine's Version:"+validator.getVersion());
 		ArrayNode issuesNode = null;
 		//Actually do the validation
 		logger.info("Starting profile loading.");
@@ -276,6 +293,7 @@ public class ValidateProvider{
 			issuesNode = validationService.validateSources(cliContext, validator);
 		}
 		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
+		returnNode.put("fhirValidatorVersion","v6.6.0");
 		returnNode.set("issues", issuesNode);
 		if(includeFormattedResource != null && includeFormattedResource.booleanValue()){
 			returnNode.put("formattedResource", resourceBody);
@@ -335,5 +353,30 @@ public class ValidateProvider{
 			servletResponse.addHeader("access-control-allow-origin", "*");
 		}
 		return servletResponse;
+   }
+
+   //IG support 
+   protected ArrayNode convertIGStringsToJson(List<String> igStrings){
+		ArrayNode returnArrayNode = JsonNodeFactory.instance.arrayNode();
+		for(String igString:igStrings){
+			returnArrayNode.add(convertIGStringToJson(igString));
+		}
+		return returnArrayNode;
+   }
+
+   protected ObjectNode convertIGStringToJson(String fullVersionString){
+		String[] parts = convertIGStringToParts(fullVersionString);
+		ObjectNode returnNode = JsonNodeFactory.instance.objectNode();
+		returnNode.put("name", parts[0]);
+		returnNode.put("version", parts[1]);
+		returnNode.put("canonicalUrl", parts[0] + "#" + parts[1]);
+		return returnNode;
+   }
+
+   protected String[] convertIGStringToParts(String fullVersionString){
+		int hashtagIndex = fullVersionString.indexOf("#");
+		String namespace = fullVersionString.substring(0, hashtagIndex);
+		String version = hashtagIndex == -1 ? "latest" : fullVersionString.substring(hashtagIndex + 1);
+		return new String[]{namespace, version};
    }
 }

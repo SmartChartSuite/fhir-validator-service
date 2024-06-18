@@ -19,11 +19,13 @@ public class ExampleRestfulServlet extends RestfulServer {
 
 	private static final long serialVersionUID = 1L;
 
+	FhirContext ctx;
 	/**
 	 * Constructor
 	 */
 	public ExampleRestfulServlet() {
 		super(FhirContext.forR4()); // This is an R4 server
+		ctx = FhirContext.forR4();
 	}
 	
 	/**
@@ -32,11 +34,12 @@ public class ExampleRestfulServlet extends RestfulServer {
 	 */
 	@Override
 	public void initialize() {
+		String base_supported_igs = getServletConfig().getInitParameter("base-supported-igs");
 		/*
 		 * Two resource providers are defined. Each one handles a specific
 		 * type of resource.
 		 */
-		registerProvider(new ValidateProvider());
+		registerProvider(new ValidateProvider(ctx, base_supported_igs));
 		
 		/*
 		 * Use a narrative generator. This is a completely optional step, 
