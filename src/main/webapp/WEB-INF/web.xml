@@ -41,7 +41,12 @@
 		</init-param>
 		<init-param>
 			<param-name>base-supported-igs</param-name>
-			<param-value>hl7.fhir.us.mdi#current,hl7.fhir.us.mdi#2.0.0-cibuild,hl7.fhir.us.vrdr#current,hl7.fhir.us.vrdr#3.0.0-cibuild,fhir.nvdrs#0.1.0
+			<param-value>hl7.fhir.us.mdi#current,hl7.fhir.us.mdi#2.0.0-cibuild,hl7.fhir.us.vrdr#current,hl7.fhir.us.vrdr#3.0.0-cibuild,fhir.nvdrs#0.2.0
+			</param-value>
+		</init-param>
+		<init-param>
+			<param-name>igDir</param-name>
+			<param-value>./localIGs
 			</param-value>
 		</init-param>
 		<load-on-startup>1</load-on-startup>
