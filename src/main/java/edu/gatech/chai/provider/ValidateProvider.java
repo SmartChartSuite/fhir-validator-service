@@ -157,6 +157,7 @@ public class ValidateProvider{
 	public OperationOutcome validateResource(
 			@OperationParam(name = "ig", min = 1) StringType ig,
 			@OperationParam(name = "format", min = 1) StringType format,
+			@OperationParam(name = "sct", min = 1) StringType sct,
 			@OperationParam(name = "includeFormattedResource") BooleanType includeFormattedResource,
 			@OperationParam(name = "resource", min = 1) IBaseResource resource) throws Exception {
 		logger.info("Received $validate operation call");
@@ -184,6 +185,14 @@ public class ValidateProvider{
 		if(!ig.isEmpty()){
 			cliArgsList.add("-ig");
 			cliArgsList.add(ig.getValue());
+		}
+		//Establish sct default value of "us"
+		if(sct == null || sct.isEmpty()){
+			sct = new StringType("us"); 
+		}
+		if(!sct.isEmpty()){
+			cliArgsList.add("-sct");
+			cliArgsList.add(sct.getValue());
 		}
 		String fileName = "";
 		//You have to write the resource to disk for the service to use it.
