@@ -227,6 +227,8 @@ public class ValidateProvider{
 		TimeTracker.Session tts = tt.start("Loading");
 		//Make CLIContext
 		CliContext cliContext = Params.loadCliContext(cliArgsList.toArray(new String[0]));
+		//
+		logger.info("CLIContext:"+cliContext.toString());
 		//Use the validationservice to set the Server Version
 		logger.info("ValidationService determineVersion:"+validationService.determineVersion(cliContext));
 		cliContext.setSv(validationService.determineVersion(cliContext));
