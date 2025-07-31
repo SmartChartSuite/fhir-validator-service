@@ -41,7 +41,7 @@
 		</init-param>
 		<init-param>
 			<param-name>base-supported-igs</param-name>
-			<param-value>hl7.fhir.us.mdi#current,hl7.fhir.us.mdi#2.0.0-cibuild,hl7.fhir.us.vrdr#current,hl7.fhir.us.vrdr#3.0.0-cibuild,hl7.fhir.us.vrdr#2.2.0,fhir.nvdrs#0.2.0,hl7.fhir.us.vdor#0.1.0-cibuild
+			<param-value>hl7.fhir.us.mdi#current,hl7.fhir.us.mdi#2.0.0-cibuild,hl7.fhir.us.vrdr#current,hl7.fhir.us.vrdr#3.0.0-cibuild,hl7.fhir.us.vrdr#2.2.0,fhir.nvdrs#0.3.0,hl7.fhir.us.vdor#0.1.0-cibuild
 			</param-value>
 		</init-param>
 		<init-param>
